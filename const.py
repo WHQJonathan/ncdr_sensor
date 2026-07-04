@@ -1,5 +1,0 @@
-DOMAIN = "ncdr_sensor"
-CONF_API_KEY = "api_key"
-CONF_COUNTY = "county"
-CONF_TOWN = "town"
-CONF_ALERT_TYPES = "alert_types"
