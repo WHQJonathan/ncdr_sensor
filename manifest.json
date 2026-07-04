@@ -1,0 +1,10 @@
+{
+  "domain": "ncdr_sensor",
+  "name": "NCDR 災害示警",
+  "codeowners": ["@jonathan_tung@wistron.com"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/WHQJonathan/ncdr_sensor",
+  "iot_class": "cloud_polling",
+  "version": "1.0.0"
+}
