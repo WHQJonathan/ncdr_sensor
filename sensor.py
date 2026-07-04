@@ -11,6 +11,7 @@ from .const import DOMAIN, CONF_API_KEY, CONF_COUNTY, CONF_TOWN, CONF_ALERT_TYPE
 
 _LOGGER = logging.getLogger(__name__)
 
+# 背景更新頻率：每 60 秒
 SCAN_INTERVAL = timedelta(seconds=60)
 
 async def async_setup_entry(
@@ -19,13 +20,22 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """載入從 UI 建立的 Config Entry"""
-    api_key = config_entry.data.get(CONF_API_KEY)
-    county = config_entry.data.get(CONF_COUNTY)
+    api_key = config_entry.data.get(CONF_API_KEY, "")
+    county = config_entry.data.get(CONF_COUNTY, "新北市")
     town = config_entry.data.get(CONF_TOWN, "")
     alert_types = config_entry.data.get(CONF_ALERT_TYPES, [])
 
-    # 建立實體並加入 HA
-    async_add_entities([NCDRAirAlertSensor(hass, api_key, county, town, alert_types)], update_before_add=True)
+    # 轉換與防錯
+    api_key_str = str(api_key).strip() if api_key else ""
+    town_str = str(town).strip() if town else ""
+    alert_types_list = alert_types if isinstance(alert_types, list) else []
+
+    # 【重要修正】將 update_before_add 改為 False
+    # 這樣可以避免在首次抓取網路資料失敗時，導致實體完全不顯示。
+    async_add_entities(
+        [NCDRAirAlertSensor(hass, api_key_str, county, town_str, alert_types_list)], 
+        update_before_add=False
+    )
 
 
 class NCDRAirAlertSensor(SensorEntity):
@@ -33,43 +43,60 @@ class NCDRAirAlertSensor(SensorEntity):
 
     def __init__(self, hass: HomeAssistant, api_key: str, county: str, town: str, alert_types: list):
         self.hass = hass
-        self._api_key = api_key.strip() if api_key else ""
+        self._api_key = api_key
         self._county = county
-        self._town = town.strip() if town else ""
-        self._alert_types = alert_types if alert_types else []
+        self._town = town
+        self._alert_types = alert_types
         self._state = "無示警"
         
-        # 建立感測器的唯一 ID 與顯示名稱
         suffix = f"_{self._town}" if self._town else ""
         self._attr_name = f"NCDR 示警 ({county}{self._town})"
         self._attr_unique_id = f"ncdr_alert_{county}{suffix}"
-        self._attributes = {}
+        
+        # 給予初始屬性，避免未更新前屬性為空
+        self._attributes = {
+            "filtered_town": self._town if self._town else "全區",
+            "filtered_types": self._alert_types if self._alert_types else "全部",
+            "summary": "等待首次資料更新..."
+        }
 
     @property
-    def state(self):
+    def name(self) -> str:
+        """顯示名稱"""
+        return self._attr_name
+
+    @property
+    def unique_id(self) -> str:
+        """唯一 ID"""
+        return self._attr_unique_id
+
+    @property
+    def state(self) -> str:
+        """主要狀態"""
         return self._state
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict:
+        """屬性清單"""
         return self._attributes
 
     async def async_update(self):
-        """定期更新並進行雙重篩選"""
+        """定期背景更新資料邏輯"""
         session = async_get_clientsession(self.hass)
         encoded_county = quote(self._county)
-        # 1. 檢查並整理 API Key，移除空白
-        api_key = self._api_key.strip() if self._api_key else ""
         
-        # 2. 依據是否有金鑰，動態產生對應的 NCDR API 網址
-        if api_key:
-            url = f"https://alerts.ncdr.nat.gov.tw/webapi/JSONAtomFeed.ashx?County={encoded_county}&apikey={api_key}"
+        if self._api_key:
+            url = f"https://alerts.ncdr.nat.gov.tw/webapi/JSONAtomFeed.ashx?County={encoded_county}&apikey={self._api_key}"
         else:
             url = f"https://alerts.ncdr.nat.gov.tw/webapi/JSONAtomFeed.ashx?County={encoded_county}"
 
         try:
             async with session.get(url, timeout=10) as response:
                 if response.status == 200:
-                    data = await response.json()
+                    # 【重要修正】加入 content_type=None
+                    # 避免 aiohttp 因為 NCDR 回傳的 Content-Type 標頭不標準而報錯中斷
+                    data = await response.json(content_type=None)
+                    
                     if "entry" in data and len(data["entry"]) > 0:
                         filtered_entries = []
                         for entry in data["entry"]:
@@ -78,20 +105,17 @@ class NCDRAirAlertSensor(SensorEntity):
 
                             # 1. 篩選「示警類別」
                             if self._alert_types:
-                                # 檢查 title 是否包含使用者勾選的任一種類別關鍵字
                                 matched_type = any(alert_type in title for alert_type in self._alert_types)
                                 if not matched_type:
                                     continue
 
-                            # 2. 篩選「鄉鎮區（地區）」
+                            # 2. 篩選「鄉鎮區」
                             if self._town:
-                                # 檢查標題或詳細描述中是否提到該鄉鎮區名稱
                                 if self._town not in title and self._town not in summary_text:
                                     continue
 
                             filtered_entries.append(entry)
 
-                        # 如果有符合過濾條件的警報
                         if filtered_entries:
                             latest_entry = filtered_entries[-1]
                             self._state = latest_entry.get("title", "無示警")
