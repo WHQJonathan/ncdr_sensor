@@ -33,7 +33,7 @@ class NCDRAirAlertSensor(SensorEntity):
 
     def __init__(self, hass: HomeAssistant, api_key: str, county: str, town: str, alert_types: list):
         self.hass = hass
-        self._api_key = api_key
+        self._api_key = api_key.strip() if api_key else ""
         self._county = county
         self._town = town.strip() if town else ""
         self._alert_types = alert_types if alert_types else []
@@ -65,7 +65,7 @@ class NCDRAirAlertSensor(SensorEntity):
             url = f"https://alerts.ncdr.nat.gov.tw/webapi/JSONAtomFeed.ashx?County={encoded_county}&apikey={api_key}"
         else:
             url = f"https://alerts.ncdr.nat.gov.tw/webapi/JSONAtomFeed.ashx?County={encoded_county}"
-            
+
         try:
             async with session.get(url, timeout=10) as response:
                 if response.status == 200:

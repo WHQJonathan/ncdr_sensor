@@ -34,14 +34,14 @@ class NCDRSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # 將 API Key 欄位修改為 vol.Optional (選填)，預設為空字串
         data_schema = vol.Schema({
-            vol.Optional(CONF_API_KEY, default=""): str,
+            vol.Optional(CONF_API_KEY, default=""): selector.TextSelector(),
             vol.Required(CONF_COUNTY, default="新北市"): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=TAIWAN_COUNTIES,
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
-            vol.Optional(CONF_TOWN): str,
+            vol.Optional(CONF_TOWN): selector.TextSelector(),
             vol.Optional(CONF_ALERT_TYPES): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=ALERT_CATEGORIES,
