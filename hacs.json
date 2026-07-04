@@ -1,0 +1,6 @@
+{
+  "name": "NCDR 自訂整合感測器",
+  "type": "integration",
+  "iot_class": "cloud_polling",
+  "render_readme": true
+}
